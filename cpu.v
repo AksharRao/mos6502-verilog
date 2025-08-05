@@ -2,7 +2,7 @@
     Date: 05/08/2025
     Day: Tuesday
     Version 1.0
-    Revised: 0 (fell free to "++"" later)
+    Revised: 0 (feel free to "++"" later)
 */
 
 module cpu(
