@@ -81,7 +81,7 @@ reg[7:0] alu_out; // ALU output register to temp store results of arithmetic/log
 
 // General Purpose Registers
 reg [7:0] A; // Accumulator Register
-reg [7:0] X; // Index Register X
+reg [7:0] indX; // Index Register X (if named simple X, Verilog treats it as unknown signal)
 reg [7:0] Y; // Index Register Y
 reg [7:0] S_Ptr; // Stack Pointer Register
 
