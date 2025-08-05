@@ -5,7 +5,7 @@
     Revised: 0 (feel free to "++"" later)
 */
 
-module cpu(
+module mos6502(
     input wire clk,                 // CPU clock signal
     input wire res,                 // Asynchronous reset signal --> active low
     output reg [15:0] add_bus       // 16-bit address bus
