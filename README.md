@@ -42,6 +42,10 @@ Contributions to improve the implementation or add missing features are welcome.
 
 This project is open source and available under the MIT License.
 
+## Related Implementations
+
+- [MOS6502 C Implementation](https://github.com/AksharRao/mos6502_emul) - A C implementation of the same processor
+
 ## References
 
 - MOS 6502 Datasheet
