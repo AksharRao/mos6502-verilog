@@ -75,15 +75,41 @@ reg [7:0] instr_reg; // Instruction Register
    +------------------> N (Negative Flag) = 1 if result is negative (MSB=1)
 */
 
-reg N = 1'b0;    // Negative Flag
-reg V = 1'b0;    // Overflow Flag
-reg B = 1'b0;    // Break Command Flag
-reg D = 1'b0;    // Decimal Mode Flag
-reg I = 1'b0;    // Interrupt Disable Flag
-reg Zero = 1'b0; // Zero Flag (if named simple Z, Verilog treats it as high impedance state))
-reg C = 1'b0;    // Carry Flag
+reg N;    // Negative Flag
+reg V;    // Overflow Flag
+reg B;    // Break Command Flag
+reg D;    // Decimal Mode Flag
+reg I;    // Interrupt Disable Flag
+reg Zero; // Zero Flag (if named simple Z, Verilog treats it as high impedance state)
+reg C;    // Carry Flag
 
-reg [7:0] psr = {N, V, 1'b1, B, D, I, Zero, C}; // Processor Status Register (P) - 8 bits
+reg [7:0] psr;
+
+// Initialize individual flags
+// REMEMBER: In Verilog, you cannot initialize a register with other registers or wires directly.
+// You can only initialize with constants or in an initial block.
+// So we will initialize them in an initial block instead of at declaration. In hardware terms, this initialization happens at power-up.
+initial begin
+    N = 1'b0;
+    V = 1'b0;
+    B = 1'b0;
+    D = 1'b0;
+    I = 1'b0;
+    Zero = 1'b0;
+    C = 1'b0;
+end
+
+// Keep PSR synchronized with individual flags
+always @(*) begin
+    psr = {N, V, 1'b1, B, D, I, Zero, C};
+end // Processor Status Register (P) - 8 bits
+
+// Initialize PSR in an initial block
+initial begin
+    psr = {1'b0, 1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0}; // Initial state of PSR
+end
+
+
 
 wire [7:0] alu_out; // ALU output register to temp store results of arithmetic/logic operations
 reg [7:0] alu_in1, alu_in2;
