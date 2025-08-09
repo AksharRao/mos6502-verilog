@@ -83,6 +83,8 @@ reg I = 1'b0;    // Interrupt Disable Flag
 reg Zero = 1'b0; // Zero Flag (if named simple Z, Verilog treats it as high impedance state))
 reg C = 1'b0;    // Carry Flag
 
+reg [7:0] psr = {N, V, 1'b1, B, D, I, Zero, C}; // Processor Status Register (P) - 8 bits
+
 wire [7:0] alu_out; // ALU output register to temp store results of arithmetic/logic operations
 reg [7:0] alu_in1, alu_in2;
 reg alu_cin;
@@ -127,6 +129,53 @@ parameter select_SP = 2'd3; // Select Stack Pointer Register
     end
 `endif
 
+/*
+ --> Microcode State Machine (Instruction Decoder/Sequencer)
+ --> Each state represents a single clock cycle.
+ */
 
+reg [5:0] microcode_state; 
+
+// Control Signals
+reg pc_inc_en; // Enables PC increment (PC_inc)
+reg [15:0] pc_nxt; // Intermediate value for next PC (PC_temp)
+
+reg [1:0] src_regSel;  // to select dst reg
+reg [1:0] dst_regSel;  // to select src reg
+
+// Control and status flags for instruction decoding and execution
+reg set_y;             // Use Y register for indexing (instead of X)
+reg is_regLoad;        // True if current instruction loads a register (LDA/LDX/LDY)
+reg is_incInstr;       // True if instruction is INC/INX/INY (increment operations)
+reg is_rmw;            // True if instruction is read-modify-write (e.g., ASL, ROL, etc.)
+reg is_loadOnly;       // True if instruction is a pure load (LDA/LDX/LDY)
+reg is_storeInstr;     // True if instruction is a store (STA/STX/STY)
+reg is_adc_sbc;        // True if instruction is ADC or SBC (add/subtract with carry)
+reg is_compInstr;      // True if instruction is a compare (CMP/CPY/CPX)
+reg is_shr;            // True if instruction is a shift or rotate (ASL/LSR/ROL/ROR)
+reg is_rotateOnly;     // True if instruction is only a rotate (ROL/ROR)
+reg is_branchBack;     // True if branch is backwards (negative offset)
+reg branch_is_true;    // True if branch condition is met and should be taken
+reg [2:0] branch_cond; // Encoded branch condition from instruction (e.g., zero, carry, etc.)
+reg is_alu_shr_en;     // Enable ALU shift-right operation for this cycle
+reg [3:0] main_aluOp;  // Main ALU operation code for the instruction
+reg [3:0] current_aluOp; // ALU operation code for the current micro-operation
+reg alu_bcd_en;        // Enable BCD (decimal) mode for ALU (used in ADC/SBC)
+reg adj_bcd;           // True if ALU result needs BCD adjustment (for decimal mode)
+
+// -- Special Instruction Flags
+reg is_bit_ins;             // True if current instruction is BIT (bit_ins)
+reg is_plp_ins;             // True if current instruction is PLP (pull processor status)
+reg is_php_ins;             // True if current instruction is PHP (push processor status onto the stack)
+reg is_clc_ins;             // True if current instruction is CLC (clear carry)
+reg is_sec_ins;             // True if current instruction is SEC (set carry)
+reg is_cld_ins;             // True if current instruction is CLD (clear decimal mode)
+reg is_sed_ins;             // True if current instruction is SED (set decimal mode)
+reg is_cli_ins;             // True if current instruction is CLI (clear interrupt disable)
+reg is_sei_ins;             // True if current instruction is SEI (set interrupt disable)
+reg is_clv_ins;             // True if current instruction is CLV (clear overflow)
+reg is_brk_ins;             // True if current instruction is BRK (break)
+
+reg is_reset_sequence;      // CPU begins normal execution after reset sequence is complete
                                   
 endmodule
