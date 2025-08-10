@@ -38,9 +38,6 @@ This is a work in progress implementation of the MOS6502 processor in Verilog. C
 
 Contributions to improve the implementation or add missing features are welcome. Please feel free to submit pull requests or open issues for bugs and feature requests.
 
-## License
-
-This project is open source and available under the MIT License.
 
 ## Related Implementations
 

@@ -89,15 +89,6 @@ reg [7:0] psr;
 // REMEMBER: In Verilog, you cannot initialize a register with other registers or wires directly.
 // You can only initialize with constants or in an initial block.
 // So we will initialize them in an initial block instead of at declaration. In hardware terms, this initialization happens at power-up.
-initial begin
-    N = 1'b0;
-    V = 1'b0;
-    B = 1'b0;
-    D = 1'b0;
-    I = 1'b0;
-    Zero = 1'b0;
-    C = 1'b0;
-end
 
 // Keep PSR synchronized with individual flags
 always @(*) begin
@@ -161,6 +152,121 @@ parameter select_SP = 2'd3; // Select Stack Pointer Register
  */
 
 reg [5:0] microcode_state; 
+// Miccrocode States --> Corresponds to 1 clock cycle
+
+parameter
+    // Common States
+    DECODE = 6'd12, // IR has a valid opcode, it is now safe to decode it.
+    FETCH = 6'd13, // Fetch next opcode from memory, perform previous ALU operation
+
+    // Addressing Mode Related States
+    ABS_LOW = 6'd0,  // Fetches the LSB of the address pointed to by the instruction pointer
+    ABS_HIGH = 6'd1,  // Fetches the MSB of the address pointed to by the instruction pointer
+
+    // Absolute X Addressing Mode
+    ABS_XLOW = 6'd2,  // Fetches the LSB of the address pointed to by the instruction pointer + X
+    ABS_XHIGH = 6'd3, // Fetches the MSB of the address pointed to by the instruction pointer + X
+    ABS_Xwait = 6'd4, // Wait for ALU to complete operation (if needed for page cross or RMW)
+    
+    // Zero Page Addressing Mode
+    ZEROPAGE_FETCH = 6'd47, // Fetch the single zero-page operand (one byte) from memory at PC
+    ZEROPAGE_X_FETCH = 6'd48, // Fetch the zero-page address with X offset
+    ZEROPAGE_X_LOAD = 6'd49, // Load data from zero-page onto the memory at the address pointed to by the zero-page address + X
+
+    // Indirect Addressing Mode
+       // (ZP), X Indexed Indirect Addressing Mode
+       // first compute ZP + X to get a pointer in zero page; 
+       // that pointer contains a two-byte address (LSB @ pointer, MSB @ pointer+1). Then read the data at that address.
+
+    ZPX_FetchZP = 6'd14, // (ZP,X) - fetch ZP address, and send to ALU (+X)
+    ZPX_FetchLSB = 6'd15, // (ZP,X) - fetch LSB at ZP+X, calculate ZP+X+1
+    ZPX_FetchMSB = 6'd16, // (ZP,X) - fetch MSB at ZP+X+1
+    ZPX_FetchData = 6'd17, // (ZP,X) - fetch data
+
+       // (ZP), Y Indirect Indexed Addressing Mode
+       // read a pointer from zero page at zp, form a 16-bit address from the two bytes there, then add Y to that 16-bit address (possible page carry). 
+       // This causes an extra cycle if Y causes page crossing.
+
+    ZPY_FetchZP = 6'd18, // (ZP),Y - fetch ZP address, and send ZP to ALU (+1)
+    ZPY_FetchLSBAddY = 6'd19, // (ZP),Y - fetch at ZP+1, and send LSB to ALU (+Y)
+    ZPY_FetchDataAddMSB = 6'd20, // (ZP),Y - fetch data, and send MSB to ALU (+Carry)
+    ZPY_FetchDataPageCross = 6'd21, // (ZP),Y - fetch data (if page boundary crossed)
+
+    // Read/Modify/Write (RMW) Specific States
+    READ = 6'd35, // Read from memory for RMW (INC, DEC, shift)
+    WRITE = 6'd46, // Write to memory for RMW
+
+    // Register-to-Register Transfer / Implied Addressing
+    REG2REG = 6'd36, // Read register for reg-reg transfers (e.g., TAX, INX)
+
+    // Jump Instructions
+        // Jump Absolute (JMP)
+    JMP_ABS_LOW = 6'd22, // JMP - fetch PCL and hold
+    JMP_ABS_HIGH = 6'd23, // JMP - fetch PCH
+        // Jump Indirect (JMP IND)
+    JMP_IND_LOW = 6'd24, // fetch low byte of indirect address
+    JMP_IND_HIGH = 6'd25, // fetch high byte of indirect address
+
+
+    // Subroutine Call (JSR)
+    JSR_PushReturnHigh = 6'd26, // Push the high byte of the return address to the stack
+    JSR_PushReturnLow = 6'd27, // Push the low byte of the return address to the stack
+    JSR_UpdateSP = 6'd28, // Update the stack pointer (SP) after pushing return address
+    JSR_FetchTargetHigh = 6'd29, // tells you you’re grabbing the high byte of the target address you’re jumping to.
+
+    // General purpose Stack operations --> where stack is used to save the contents of the register temporarily so that it could be accessed later
+    // Stack Pull (PLP/PLA)
+    PULL_PREFETCH_NXTOP = 6'd30, // prefetching next opcode and storing it in instr_regHold for future use
+    PULL_READ_STACK = 6'd31, // PLP/PLA - fetch data from stack, write S
+    PULL_LOAD_IR = 6'd32, // PLP/PLA - prefetch op, but don't increment PC
+
+    // Stack Push (PHP/PHA)
+    PUSH_to_ALU = 6'd33, 
+    PUSH_TO_STACK = 6'd34, 
+
+
+    // Return From Interrupt (RTI)
+    /* these are the micro-states for RTI (Return from Interrupt), 
+    which basically restores the CPU exactly to the state it had before the interrupt happened. */
+    
+    INC_SP = 6'd37, // Increment SP by 1 to point to the saved status register (P)
+    READ_P_FROM_STACK = 6'd38, // Read that status register value from $0100 + SP and load it into P (restoring all flags)
+    PULL_PC_LOW = 6'd39, // Increment SP, read the saved PCL from the stack, load into PC low byte
+    PULL_PC_HIGH_0 = 6'd40, // Increment SP again, begin fetching PCH from stack (first cycle)
+    PULL_PC_HIGH_1 = 6'd41, // Complete PCH read, load into PC high byte, and resume execution at that address.
+
+    // Return From Subroutine (RTS)
+    RTS_INC_SP = 6'd42, // Increment SP to point to the saved PCL (low byte of return address).
+    RTS_READ_FROM_STACK = 6'd43, // Read PCL from stack into a temporary location in register.
+    RTS_WRITE_PCL_READ_PCH = 6'd44, // Send the PCL to the ALU so it can be loaded into PC later, increment SP again, and read PCH (high byte) from stack.
+    RTS_LoadPC_INC = 6'd45, // RTS - load PC and increment
+
+    // Branch Instructions
+    /* During a conditional branch instruction, the 6502 CPU first fetches the 8-bit signed offset from the instruction and adds it to the low byte of the Program Counter (`PC`). 
+    If the branch condition is met and the addition of the offset causes a page crossing (i.e., the high byte of the address changes), 
+    the CPU takes an additional clock cycle to adjust the high byte of the Program Counter. 
+    This process is managed by a sequence of microcode states:
+    `STATE_BRANCH_FETCH_OFFSET` fetches the offset and begins the low-byte addition;
+    `STATE_BRANCH_CALCULATE_TARGET` calculates the new high byte of the address to check for a page boundary crossing; 
+    and `STATE_BRANCH_PAGE_CROSS_ADJUST` handles the extra clock cycle required if a page boundary is crossed. 
+    This ensures the Program Counter is correctly updated to the new target address, whether the branch is forward or backward. */
+
+    BRANCH_FETCH_OFFSET = 6'd5,  // Branch - fetch offset and send to ALU (+PC[7:0])
+    BRANCH_CALC_TARGET = 6'd6,  // Branch - fetch opcode, and send PC[15:8] to ALU (page boundary check)
+    BRANCH_PAGE_CROSS_ADJUST = 6'd7,  // Branch - fetch opcode (if page boundary crossed)
+
+    // Break/Interrupt Sequence
+    
+    /* manage the CPU's response to an interrupt or a BRK instruction. In this sequence, the high and low bytes of the Program Counter (PC),
+     followed by the Processor Status Register (P), are pushed onto the stack to save the CPU's current state. 
+     During these pushes, the Stack Pointer (SP) is decremented. Finally, the CPU fetches the address of the interrupt service routine from 
+     a specific vector in memory and loads it into the PC, allowing it to jump to the interrupt handler. 
+     This process ensures the CPU can return to its previous state after the interrupt is handled. */
+
+    BRK_PUSH_PCHi = 6'd8,  // BRK/IRQ - push PCH, send S to ALU (-1)
+    BRK_PUSH_PCLo = 6'd9,  // BRK/IRQ - push PCL, send S to ALU (-1)
+    BRK_PUSH_P_FLAG = 6'd10, // BRK/IRQ - push P, send S to ALU (-1)
+    BRK_WRITE_SP_FETCH_VECTOR = 6'd11; // BRK/IRQ - write S, and fetch @ fffe (or ffca for NMI, fffe for IRQ/BRK)
 
 // Control Signals
 reg pc_inc_en; // Enables PC increment (PC_inc)
@@ -203,5 +309,17 @@ reg is_clv_ins;             // True if current instruction is CLV (clear overflo
 reg is_brk_ins;             // True if current instruction is BRK (break)
 
 reg is_reset_sequence;      // CPU begins normal execution after reset sequence is complete
+
+// ALU Operation Parameters
+parameter
+        alu_op_or  = 4'b1100,
+        alu_op_and = 4'b1101,
+        alu_op_eor = 4'b1110,
+        alu_op_add = 4'b0011,
+        alu_op_sub = 4'b0111,
+        op_rot_left = 4'b1011,
+        op_passA   = 4'b1111;
+
+
                                   
 endmodule
